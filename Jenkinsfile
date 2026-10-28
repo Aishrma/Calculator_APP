@@ -22,8 +22,8 @@ pipeline {
 
     environment {
         // ---- change these two values if yours are different ----
-        DOCKERHUB_USER = 'aishrma'                         // Docker Hub username (not a secret)
-        NOTIFY_EMAIL   = 'Aishwarya.Sharma@iiitb.ac.in'    // build notifications go here
+        DOCKERHUB_USER = 'aishdocked'                         // Docker Hub username (not a secret)
+        NOTIFY_EMAIL   = 'aishsharma1102@gmail.com'    // build notifications go here
 
         IMAGE_NAME = "${DOCKERHUB_USER}/calculator-api"
         IMAGE_TAG  = "${BUILD_NUMBER}"

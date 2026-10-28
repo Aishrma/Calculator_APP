@@ -16,7 +16,7 @@ name: calculator
 
 services:
   calculator-api:
-    image: ${DOCKERHUB_USER:-aishrma}/calculator-api:${IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_USER:-aishdocked}/calculator-api:${IMAGE_TAG:-latest}
     build:
       context: .
     deploy:
