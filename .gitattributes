@@ -1,0 +1,10 @@
+# Shell scripts and Linux-side files must keep LF line endings even when
+# committed from Windows, otherwise they fail inside Linux containers / Jenkins.
+* text=auto
+mvnw text eol=lf
+*.sh text eol=lf
+Jenkinsfile text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.conf text eol=lf
+mvnw.cmd text eol=crlf

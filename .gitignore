@@ -1,0 +1,39 @@
+# ---- Maven / Java ----
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+*.log
+hs_err_pid*
+
+# ---- IDEs ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+bin/
+out/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Secrets: never commit credentials ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# ---- Course material (not part of the project source) ----
+SPE_Mini_Project.docx
+~$*.docx
