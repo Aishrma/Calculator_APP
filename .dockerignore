@@ -1,0 +1,35 @@
+# Keep the Docker build context small and free of secrets.
+# Only pom.xml and src/ are needed by the Dockerfile.
+
+# Build output / local Maven
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# VCS and CI
+.git/
+.gitignore
+.gitattributes
+Jenkinsfile
+jenkins/
+
+# Compose / proxy (not part of the app image)
+docker-compose*.yml
+nginx/
+.env
+.env.*
+
+# Docs
+*.md
+docs/
+*.docx
+*.pdf
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
