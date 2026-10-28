@@ -20,7 +20,7 @@ services:
     # `group_add: ["<docker gid>"]` instead.
     user: root
     ports:
-      - "8080:8080"     # Jenkins web UI
+      - "8082:8080"     # Jenkins web UI
       - "50000:50000"   # inbound agents
     volumes:
       - jenkins_home:/var/jenkins_home              # persists jobs, plugins, credentials
