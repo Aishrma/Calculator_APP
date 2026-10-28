@@ -1,0 +1,47 @@
+# Jenkins CI server (+ optional ngrok tunnel so GitHub can reach the webhook).
+# Run from the WSL (Ubuntu) shell, with Docker Desktop's WSL integration enabled:
+#
+#   cd ~/Calculator_APP/jenkins
+#   docker compose up -d --build                     # Jenkins only  -> http://localhost:8080
+#   docker compose --profile webhook up -d --build   # Jenkins + ngrok tunnel (needs jenkins/.env)
+#
+# This is a SEPARATE compose project ("jenkins") from the application stack ("calculator").
+
+name: jenkins
+
+services:
+  jenkins:
+    build: .
+    image: calculator-jenkins:lts
+    container_name: jenkins
+    # The Docker socket shared by Docker Desktop (WSL 2 backend) is owned by
+    # root inside containers, so the controller runs as root to be able to use
+    # it. Acceptable for a local lab machine; on a dedicated Linux server use
+    # `group_add: ["<docker gid>"]` instead.
+    user: root
+    ports:
+      - "8080:8080"     # Jenkins web UI
+      - "50000:50000"   # inbound agents
+    volumes:
+      - jenkins_home:/var/jenkins_home              # persists jobs, plugins, credentials
+      - /var/run/docker.sock:/var/run/docker.sock   # talk to the host Docker engine
+    environment:
+      TZ: "Asia/Kolkata"
+      JAVA_OPTS: "-Duser.timezone=Asia/Kolkata"
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: ["webhook"]
+    container_name: jenkins-ngrok
+    command: ["http", "--url=${NGROK_DOMAIN:-}", "jenkins:8080"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    ports:
+      - "4040:4040"     # ngrok inspector UI -> http://localhost:4040
+    depends_on:
+      - jenkins
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
