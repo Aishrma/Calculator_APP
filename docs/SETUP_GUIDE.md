@@ -22,11 +22,11 @@ It is written for **WSL 2 (Ubuntu) on Windows 11 + Docker Desktop**. **Every com
 
 > **Values used below. Change them if yours differ.**
 > * GitHub repo: `https://github.com/Aishrma/Calculator_APP`
-> * Docker Hub username: `aishrma`. If yours is different, edit it in **two places**: `DOCKERHUB_USER` in the `Jenkinsfile`, and the default `${DOCKERHUB_USER:-aishrma}` in `docker-compose.yml`. Also update the Docker Hub link in `README.md`.
+> * Docker Hub username: `aishdocked`. It is set in **two places**: `DOCKERHUB_USER` in the `Jenkinsfile`, and the default `${DOCKERHUB_USER:-aishdocked}` in `docker-compose.yml`.
 > * Notification email: `Aishwarya.Sharma@iiitb.ac.in` (`NOTIFY_EMAIL` in the `Jenkinsfile`)
 > * Project folder inside WSL: `~/Calculator_APP`
 >
-> **Ports:** Jenkins `8080` · deployed app (nginx) `8081` · `docker run` test `9090` · ngrok inspector `4040`.
+> **Ports:** Jenkins `8082` (container port 8080 is mapped to host port 8082) · deployed app (nginx) `8081` · `docker run` test `9090` · ngrok inspector `4040`.
 > WSL 2 forwards these to Windows, so `http://localhost:<port>` works both in the Windows browser and with `curl` inside Ubuntu.
 
 ---
@@ -161,7 +161,7 @@ curl "http://localhost:8080/api/v1/divide?a=5&b=0"
 curl "http://localhost:8080/actuator/health"
 # {"status":"UP","groups":["liveness","readiness"]}
 ```
-Stop the app with `Ctrl+C` in the first terminal. **Port 8080 must be free before Part 6**, because Jenkins uses it.
+Stop the app with `Ctrl+C` in the first terminal. (Jenkins is published on host port **8082**, so it never clashes with a locally running app on 8080.)
 
 ### What each source file does (be ready to explain these in the demo)
 
@@ -288,7 +288,7 @@ Check: `git log --oneline --graph --all` should show about 10 commits and 3 merg
 3. **Create an access token** (Jenkins uses this instead of your password): avatar → *Account settings → Personal access tokens → Generate new token*. Description `jenkins`, access permissions **Read & Write** → *Generate*. **Copy the token now**, because it is shown only once. Keep it out of every file in the repo.
 4. Test it from Ubuntu:
    ```bash
-   docker login -u aishrma        # paste the TOKEN as the password
+   docker login -u aishdocked        # paste the TOKEN as the password
    docker logout
    ```
 
@@ -300,9 +300,9 @@ Check: `git log --oneline --graph --all` should show about 10 commits and 3 merg
 
 ```bash
 cd ~/Calculator_APP
-docker build -t aishrma/calculator-api:manual .
-docker images aishrma/calculator-api
-docker run -d --name calc-test -p 9090:8080 aishrma/calculator-api:manual
+docker build -t aishdocked/calculator-api:manual .
+docker images aishdocked/calculator-api
+docker run -d --name calc-test -p 9090:8080 aishdocked/calculator-api:manual
 docker ps                                      # STATUS becomes "(healthy)" after about 40 s
 curl "http://localhost:9090/api/v1/multiply?a=6&b=7"
 docker exec calc-test whoami                   # prints "spring", so the app is not running as root
@@ -353,10 +353,10 @@ docker logs -f jenkins              # wait for "Jenkins is fully up and running"
    ```bash
    docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
    ```
-2. In the Windows browser, open <http://localhost:8080>, paste the password → **Continue**.
+2. In the Windows browser, open <http://localhost:8082>, paste the password → **Continue**.
 3. **Install suggested plugins** and wait for it to finish. The pipeline's own plugins are already preinstalled.
 4. Create the admin user (your own username and password) → **Save and Continue**.
-5. Instance configuration: Jenkins URL `http://localhost:8080/` → **Save and Finish → Start using Jenkins**.
+5. Instance configuration: Jenkins URL `http://localhost:8082/` → **Save and Finish → Start using Jenkins**. (This URL is used in the links inside the notification emails.)
 
 ### 6.2 Check that Jenkins can reach Docker and Maven
 
@@ -379,7 +379,7 @@ If you see "permission denied … docker.sock", see Troubleshooting T1.
 |---|---|
 | Kind | **Username with password** |
 | Scope | Global |
-| Username | `aishrma` (your Docker Hub username) |
+| Username | `aishdocked` (your Docker Hub username) |
 | Password | the **Docker Hub access token** from Part 4 |
 | ID | `dockerhub-creds` (must be exactly this, because the Jenkinsfile refers to it) |
 | Description | Docker Hub token |
@@ -433,7 +433,7 @@ The first run takes **5–10 minutes**, because Maven and the Docker base images
 
 **Expected:** every stage is green — `Checkout → Build → Test → Docker Build → Push → Deploy → Verify`. Then:
 * The **Tests** tab shows 32 passing tests, and the **Coverage** report is linked on the build page.
-* Docker Hub → `aishrma/calculator-api` → **Tags** shows `1` and `latest`.
+* Docker Hub → `aishdocked/calculator-api` → **Tags** shows `1` and `latest`.
 * `docker ps` in Ubuntu shows the 2 API replicas and nginx, all healthy.
 * <http://localhost:8081/api/v1/add?a=2&b=3> works in the Windows browser.
 * A **SUCCESS email** arrives.
@@ -461,34 +461,51 @@ Click **Build Now** a second time. It should also go green. Compose sees the new
 
 ## Part 9 — Automatic trigger with a GitHub webhook
 
-GitHub cannot reach `localhost`, so you expose Jenkins through a free **ngrok** tunnel. ngrok runs as a container next to Jenkins, so nothing has to be installed in Ubuntu.
+GitHub cannot reach `localhost`, so you expose Jenkins through a free **ngrok** tunnel. The ngrok agent runs **in Ubuntu (WSL)** and forwards a public HTTPS URL to Jenkins on `localhost:8082`.
+
+This project's tunnel: `https://dexterous-reseal-disabled.ngrok-free.dev` → `http://localhost:8082`
 
 ### 9.1 ngrok account
 
 1. Sign up at <https://dashboard.ngrok.com/signup> (free).
 2. Copy your **Authtoken** from *Getting Started → Your Authtoken*.
-3. Go to *Universal Gateway → Domains* (or *Domains*) and claim your **free static domain**, for example `something-random.ngrok-free.app`. A static domain means the webhook URL never changes.
+3. Every free account gets **one static dev domain** (shown under *Domains*, e.g. `something-random.ngrok-free.dev`). ngrok uses it automatically, so the webhook URL stays the same every time you start the tunnel.
 
-### 9.2 Start the tunnel
+### 9.2 Install ngrok in Ubuntu (one time)
 
 ```bash
-cd ~/Calculator_APP/jenkins
-cp .env.example .env
-nano .env            # paste NGROK_AUTHTOKEN and NGROK_DOMAIN, then save (Ctrl+O, Enter, Ctrl+X)
-chmod 600 .env       # only you can read the token
-docker compose --profile webhook up -d
-docker logs jenkins-ngrok          # should show "started tunnel"
+sudo snap install ngrok
+ngrok version                                  # e.g. ngrok version 3.x
+ngrok config add-authtoken <YOUR_AUTHTOKEN>    # saved in ~/.config/ngrok/ngrok.yml, never in the repo
 ```
-Open `https://<your-domain>.ngrok-free.app` in the browser. You should see the Jenkins login page (click through ngrok's "Visit Site" warning). Open <http://localhost:4040> for ngrok's request inspector.
-`jenkins/.env` is git-ignored. Check that `git status` never lists it.
 
-### 9.3 Add the webhook on GitHub
+### 9.3 Start the tunnel
+
+Jenkins must already be running (Part 6). Open a **separate Ubuntu terminal tab**, because ngrok keeps running in the foreground:
+
+```bash
+ngrok http 8082
+```
+
+The ngrok status screen should show:
+* `Session Status   online`
+* `Forwarding   https://<your-domain>.ngrok-free.dev -> http://localhost:8082`
+
+Leave this tab open. Closing it (or `Ctrl+C`) stops the tunnel, and GitHub can no longer reach Jenkins.
+
+* Open `https://<your-domain>.ngrok-free.dev` in the browser. Click through ngrok's "Visit Site" notice, and you should see the **Jenkins login page**.
+* <http://localhost:4040> is ngrok's request inspector, where each webhook POST appears.
+* The ngrok status screen also lists every request, for example `POST /github-webhook/   200 OK`.
+
+> *Alternative (not used here):* `jenkins/docker-compose.yml` also contains an optional `ngrok` container (`docker compose --profile webhook up -d`, configured through a git-ignored `jenkins/.env`). Use one approach or the other, not both.
+
+### 9.4 Add the webhook on GitHub
 
 GitHub repo → *Settings → Webhooks → **Add webhook***:
 
 | Field | Value |
 |---|---|
-| Payload URL | `https://<your-domain>.ngrok-free.app/github-webhook/` (**the trailing `/` matters**) |
+| Payload URL | `https://<your-domain>.ngrok-free.dev/github-webhook/`, here `https://dexterous-reseal-disabled.ngrok-free.dev/github-webhook/` (**the trailing `/` matters**) |
 | Content type | `application/json` |
 | Secret | (leave empty) |
 | Which events | **Just the push event** |
@@ -498,20 +515,28 @@ GitHub repo → *Settings → Webhooks → **Add webhook***:
 
 > The `githubPush()` trigger in the Jenkinsfile is registered only after the job has run **once** (you did that in Part 8).
 
-### 9.4 Test the automatic trigger
+Also check that the Jenkins job has ☑ **GitHub hook trigger for GITScm polling** under *Configure → Triggers*.
+
+### 9.5 Test the automatic trigger
 
 ```bash
 cd ~/Calculator_APP
 git checkout main && git pull
-git checkout -b feature/webhook-test
+git checkout -b feature/webhook-trigger
 sed -i '0,/<version>1.0.0<\/version>/s//<version>1.0.1<\/version>/' pom.xml   # bump the project version
 git diff                                                                      # only the project version line changed
-git commit -am "chore: bump version to 1.0.1"
-git push -u origin feature/webhook-test
+git commit -am "chore: bump version to 1.0.1 to verify webhook trigger"
+git push -u origin feature/webhook-trigger
 gh pr create --fill --base main && gh pr merge --merge
 git checkout main && git pull
 ```
-**Within seconds** a new build starts in Jenkins without anyone clicking anything. The build page says *"Started by GitHub push by Aishrma"*. When it finishes, `curl http://localhost:8081/actuator/info` shows `"version":"1.0.1"` and the new `image.tag`.
+**Within seconds:**
+* the ngrok tab shows `POST /github-webhook/  200 OK`;
+* a new build starts in Jenkins without anyone clicking anything. In this project it was build **#5**, shown in the stage view with "3 commits" and in the build's *GitHub Hook Log*.
+
+When it finishes, `curl http://localhost:8081/actuator/info` shows `"version":"1.0.1"` and the new `image.tag`, and the SUCCESS email for the build arrives.
+
+> **Each time you restart your machine:** start Docker Desktop → start Jenkins (`cd ~/Calculator_APP/jenkins && docker compose up -d`) → run `ngrok http 8082` in its own tab. The domain stays the same, so the GitHub webhook needs no changes.
 
 > **Fallback if the webhook is impossible** (e.g. the network blocks ngrok): in the Jenkinsfile, replace `githubPush()` with `pollSCM('H/2 * * * *')`. Jenkins then checks GitHub every 2 minutes. The spec accepts this, but a webhook is preferred.
 
@@ -555,9 +580,10 @@ Also send me: your **Docker Hub repository URL**, and anything that went wrong w
 
 **Before class:**
 1. Start **Docker Desktop**, then open Ubuntu.
-2. Run `cd ~/Calculator_APP/jenkins && docker compose --profile webhook up -d`.
-3. Make sure Jenkins is open at `localhost:8080`, the last build is green, and the app is reachable at `localhost:8081`.
-4. Open browser tabs for GitHub, Jenkins, Docker Hub and your inbox.
+2. Run `cd ~/Calculator_APP/jenkins && docker compose up -d` (Jenkins), then `cd ~/Calculator_APP && docker compose start` (app).
+3. In a separate Ubuntu tab, run `ngrok http 8082`. Check that it shows `online` and forwards `https://dexterous-reseal-disabled.ngrok-free.dev`.
+4. Make sure Jenkins is open at `localhost:8082`, the last build is green, and the app is reachable at `localhost:8081`.
+5. Open browser tabs for GitHub, Jenkins, Docker Hub and your inbox.
 
 1. **Show the running deployment:** `docker ps`, then `curl "http://localhost:8081/api/v1/add?a=2&b=3"` and `/actuator/info` (note the current version and image tag).
 2. **Make a change on a feature branch.** A good visible change is a new endpoint. Add this to `CalculatorService`:
@@ -589,7 +615,7 @@ Also send me: your **Docker Hub repository URL**, and anything that went wrong w
    git push -u origin feature/power-endpoint
    gh pr create --fill --base main && gh pr merge --merge
    ```
-4. **Switch to Jenkins.** A build starts by itself ("Started by GitHub push"). Walk through the stages as they turn green. Then:
+4. **Switch to Jenkins.** The ngrok tab shows `POST /github-webhook/ 200 OK`, and a build starts by itself ("Started by GitHub push"). Walk through the stages as they turn green. Then:
    `curl "http://localhost:8081/api/v1/power?a=2&b=10"` returns `{"operation":"power","a":2,"b":10,"result":1024}`.
    `/actuator/info` shows the **new image tag**, Docker Hub has the new tag, and the success email arrives.
 5. **(Optional) Show the failure path:** on a branch, change an expected value in a test (e.g. `"2, 3, 5"` → `"2, 3, 6"`), merge it, and the **Test** stage goes red. Later stages are skipped, the **running deployment is untouched** (`curl` still works), and a **FAILURE email** with the log attached arrives. Revert it afterwards with `git revert HEAD` and push.
@@ -610,15 +636,18 @@ Also send me: your **Docker Hub repository URL**, and anything that went wrong w
 | T5 | `./mvnw: Permission denied` | `chmod +x mvnw` (and `git update-index --chmod=+x mvnw` if it was committed without the bit) |
 | T6 | `/usr/bin/env: 'sh\r': No such file or directory` | A file got CRLF line endings. `sudo apt install -y dos2unix && dos2unix mvnw`. `.gitattributes` and `core.autocrlf input` prevent this from coming back. |
 | T7 | `release version 17 not supported` / `JAVA_HOME` errors | `sudo apt install openjdk-17-jdk-headless`, then `sudo update-alternatives --config java` and pick 17 |
-| T8 | `Bind for 0.0.0.0:8080 failed: port is already allocated` | Something else (the app from Part 2?) is on 8080. Find it with `sudo ss -ltnp \| grep 8080`. On the Windows side, check with `netstat -ano \| findstr :8080`. |
-| T9 | `localhost:8080` / `8081` does not open in the Windows browser | Try `http://127.0.0.1:8081`. Check that `curl` works inside Ubuntu. Check that Docker Desktop is running. As a last resort, run `wsl --shutdown` in Windows and start again. |
+| T8 | `Bind for 0.0.0.0:8082 failed: port is already allocated` (or 8081) | Something else is using the port. Find it with `sudo ss -ltnp \| grep 8082`. On the Windows side, check with `netstat -ano \| findstr :8082`. |
+| T9 | `localhost:8082` / `8081` does not open in the Windows browser | Try `http://127.0.0.1:8081`. Check that `curl` works inside Ubuntu. Check that Docker Desktop is running. As a last resort, run `wsl --shutdown` in Windows and start again. |
 | T10 | Deploy stage: `unknown flag: --wait` | Docker Compose is too old. Update Docker Desktop (the Jenkins image installs the latest compose plugin) |
 | T11 | Deploy times out: `container ... is unhealthy` | `docker compose logs calculator-api` (from `~/Calculator_APP`) to see why the app did not start |
 | T12 | Push stage: `unauthorized: incorrect username or password` | Re-create the `dockerhub-creds` credential with the **token** (Read & Write) and the right username |
 | T13 | Push: `denied: requested access to the resource is denied` | `DOCKERHUB_USER` in the Jenkinsfile does not match the credential's username |
 | T14 | Email: `535 Authentication failed` / `Username and Password not accepted` | Use the Gmail **app password**, not your normal one. Use port 465 + SSL. The *System Admin e-mail address* must be the same Gmail address. |
 | T15 | No email at all, but the build is green | Check the console for `Sending email to: …`. Check spam. Check that the *Extended E-mail Notification* section (not just *E-mail Notification*) has credentials. |
-| T16 | Webhook delivery shows 302/403/404 | The payload URL must end in `/github-webhook/` (trailing slash), and the ngrok tunnel must be running (`docker logs jenkins-ngrok`) |
+| T16 | Webhook delivery shows 302/403/404, or "failed to connect" | The payload URL must end in `/github-webhook/` (trailing slash). The `ngrok http 8082` tab must be open and show `online`. Then press **Redeliver** on GitHub. |
+| T16b | ngrok: `ERR_NGROK_4018` / authentication failed | Run `ngrok config add-authtoken <token>` again with the token from the ngrok dashboard |
+| T16c | ngrok: `ERR_NGROK_108` / "limited to 1 simultaneous session" | Another ngrok is already running (another tab, or the compose `ngrok` service). Stop it (`pkill ngrok` or `docker rm -f jenkins-ngrok`) and start again. |
+| T16d | The ngrok URL shows ngrok's "ERR_NGROK_8012" / connection refused | Jenkins is not running on 8082. Run `cd ~/Calculator_APP/jenkins && docker compose up -d` and wait about a minute. |
 | T17 | Webhook is 200 but no build starts | Run the job manually once. Tick *GitHub hook trigger for GITScm polling*. The branch must be `*/main` and the push must reach `main`. |
 | T18 | `recordCoverage` / `No such DSL method` | A plugin is missing. *Manage Jenkins → Plugins → Available* → install **Coverage** (or **Email Extension**), then restart Jenkins |
 | T19 | nginx returns `502 Bad Gateway` | The API replicas are still starting. Wait for `docker compose ps` to show healthy. |
@@ -632,7 +661,8 @@ cd ~/Calculator_APP
 docker compose ps                         # app stack status (project "calculator")
 docker compose logs -f calculator-api     # app logs
 docker compose down                       # stop the app stack
-(cd jenkins && docker compose stop)       # stop Jenkins + ngrok (data persists in the jenkins_home volume)
-(cd jenkins && docker compose --profile webhook up -d)   # start Jenkins + ngrok again
+(cd jenkins && docker compose stop)       # stop Jenkins (data persists in the jenkins_home volume)
+(cd jenkins && docker compose up -d)      # start Jenkins again (UI on http://localhost:8082)
+ngrok http 8082                           # start the webhook tunnel (own tab; Ctrl+C to stop)
 docker system df                          # disk usage; `docker image prune` to clean up
 ```
